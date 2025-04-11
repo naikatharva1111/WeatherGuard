@@ -42,4 +42,4 @@ Built with ML and WeatherAPI, it combines data science with user-friendly design
 
 ---
 ## Images 
-![App Screenshot](screenshot(114).png)
+![App Screenshot](Screenshot (114).png)

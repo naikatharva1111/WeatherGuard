@@ -41,3 +41,5 @@ Built with ML and WeatherAPI, it combines data science with user-friendly design
 | **Python-dotenv** | Secure environment variable management |
 
 ---
+## Images 
+![App Screenshot](screenshot(114).png)

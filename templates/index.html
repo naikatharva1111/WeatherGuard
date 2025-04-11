@@ -1,0 +1,156 @@
+
+{% extends "base.html" %}
+
+{% block title %}Weather Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto text-center mb-5">
+        <h1 class="display-4">WeatherGuard Pro</h1>
+        <p class="lead">Your comprehensive weather monitoring and alert system</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Feature Cards -->
+    <div class="col-md-6 col-lg-3">
+        <div class="card feature-card h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-cloud-sun-fill text-primary" style="font-size: 2rem;"></i>
+                <h5 class="card-title mt-3">Current Weather</h5>
+                <p class="card-text">Real-time conditions with severe weather alerts</p>
+                <a href="/current-weather" class="btn btn-outline-primary">View</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-lg-3">
+        <div class="card feature-card h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-calendar3 text-success" style="font-size: 2rem;"></i>
+                <h5 class="card-title mt-3">5-Day Forecast</h5>
+                <p class="card-text">Detailed weather predictions</p>
+                <a href="/forecast" class="btn btn-outline-success">View</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-lg-3">
+        <div class="card feature-card h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-graph-up text-info" style="font-size: 2rem;"></i>
+                <h5 class="card-title mt-3">Historical Data</h5>
+                <p class="card-text">Past weather patterns and trends</p>
+                <a href="/historical" class="btn btn-outline-info">View</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-lg-3">
+        <div class="card feature-card h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-map text-warning" style="font-size: 2rem;"></i>
+                <h5 class="card-title mt-3">Weather Maps</h5>
+                <p class="card-text">Interactive radar and satellite</p>
+                <a href="/maps" class="btn btn-outline-warning">View</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-exclamation-triangle"></i> Recent Alerts
+            </div>
+            <div class="card-body">
+                <div id="recent-alerts">
+                    <!-- Alerts will be loaded via JavaScript -->
+                    <div class="text-center my-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-bell"></i> Quick Subscribe
+            </div>
+            <div class="card-body">
+                <form id="subscribeForm">
+                    <div class="mb-3">
+                        <label for="emailInput" class="form-label">Email address</label>
+                        <input type="email" class="form-control" id="emailInput" required>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="smsCheck">
+                        <label class="form-check-label" for="smsCheck">Enable SMS alerts</label>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-envelope-check"></i> Subscribe
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load recent alerts
+fetch('/api/current?location=London')
+    .then(response => response.json())
+    .then(data => {
+        const alertsContainer = document.getElementById('recent-alerts');
+        if (data.alerts && data.alerts.length > 0) {
+            let alertsHTML = '';
+            data.alerts.forEach(alert => {
+                alertsHTML += `
+                <div class="alert alert-${alert.type === 'heat' ? 'danger' : 
+                                      alert.type === 'cold' ? 'info' :
+                                      alert.type === 'wind' ? 'warning' : 'primary'}">
+                    <i class="bi ${alert.type === 'heat' ? 'bi-thermometer-high' : 
+                                 alert.type === 'cold' ? 'bi-thermometer-low' :
+                                 alert.type === 'wind' ? 'bi-wind' : 'bi-sun'}"></i>
+                    ${alert.message}
+                </div>`;
+            });
+            alertsContainer.innerHTML = alertsHTML;
+        } else {
+            alertsContainer.innerHTML = '<div class="alert alert-secondary">No active alerts</div>';
+        }
+    });
+
+// Handle subscription form
+document.getElementById('subscribeForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const email = document.getElementById('emailInput').value;
+    const smsEnabled = document.getElementById('smsCheck').checked;
+    
+    fetch('/api/subscribe', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            email: email,
+            sms_enabled: smsEnabled
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message || 'Subscription successful!');
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Subscription failed. Please try again.');
+    });
+});
+</script>
+{% endblock %}

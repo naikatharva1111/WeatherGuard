@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Weather Maps{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-map"></i> Weather Maps
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <input type="text" id="locationInput" class="form-control" placeholder="Enter city or zip code" value="{{ default_location }}">
+                    </div>
+                    <div class="col-md-2">
+                        <select id="mapType" class="form-select">
+                            <option value="precipitation">Precipitation</option>
+                            <option value="temperature">Temperature</option>
+                            <option value="wind">Wind</option>
+                            <option value="clouds">Clouds</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button id="searchBtn" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Search
+                        </button>
+                    </div>
+                </div>
+                <div id="errorContainer" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="mapsContainer" class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-info text-white">
+                <i class="bi bi-cloud-rain-heavy"></i> Weather Map
+            </div>
+            <div class="card-body p-0">
+                <div id="weatherMap" style="height: 500px;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <i class="bi bi-info-circle"></i> Location Info
+            </div>
+            <div class="card-body">
+                <div id="locationInfo">
+                    <div class="text-center my-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading location data...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header bg-warning text-white">
+                <i class="bi bi-layers"></i> Map Types
+            </div>
+            <div class="card-body">
+                <div class="btn-group-vertical w-100">
+                    <button class="btn btn-outline-primary map-type-btn active" data-type="precipitation">
+                        <i class="bi bi-cloud-rain"></i> Precipitation
+                    </button>
+                    <button class="btn btn-outline-danger map-type-btn" data-type="temperature">
+                        <i class="bi bi-thermometer"></i> Temperature
+                    </button>
+                    <button class="btn btn-outline-success map-type-btn" data-type="wind">
+                        <i class="bi bi-wind"></i> Wind
+                    </button>
+                    <button class="btn btn-outline-secondary map-type-btn" data-type="clouds">
+                        <i class="bi bi-clouds"></i> Clouds
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Include Leaflet for interactive maps -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchBtn = document.getElementById('searchBtn');
+    const locationInput = document.getElementById('locationInput');
+    const mapTypeSelect = document.getElementById('mapType');
+    const errorContainer = document.getElementById('errorContainer');
+    const weatherMapDiv = document.getElementById('weatherMap');
+    const locationInfoDiv = document.getElementById('locationInfo');
+    const mapTypeButtons = document.querySelectorAll('.map-type-btn');
+    
+    let map;
+    let currentMarkers = [];
+    let currentOverlay;
+
+    // Initialize map with default view
+    initMap(51.505, -0.09, 5); // Default to London
+    
+    // Load maps for default location on page load
+    fetchMapData(locationInput.value, mapTypeSelect.value);
+
+    searchBtn.addEventListener('click', function() {
+        const location = locationInput.value.trim();
+        if (location) {
+            fetchMapData(location, mapTypeSelect.value);
+        }
+    });
+
+    // Map type button click handlers
+    mapTypeButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const type = this.dataset.type;
+            mapTypeSelect.value = type;
+            fetchMapData(locationInput.value.trim() || 'London', type);
+            
+            // Update active button
+            mapTypeButtons.forEach(btn => btn.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+
+    function initMap(lat, lon, zoom) {
+        if (map) {
+            map.off();
+            map.remove();
+        }
+        
+        map = L.map('weatherMap').setView([lat, lon], zoom);
+        
+        // Add base tile layer (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+    }
+
+    function addWeatherOverlay(url, bounds) {
+        // Remove previous overlay if exists
+        if (currentOverlay) {
+            map.removeLayer(currentOverlay);
+        }
+        
+        // Add new overlay
+        currentOverlay = L.imageOverlay(url, bounds).addTo(map);
+        map.fitBounds(bounds);
+    }
+
+    function addLocationMarker(lat, lon, name) {
+        // Clear previous markers
+        currentMarkers.forEach(marker => map.removeLayer(marker));
+        currentMarkers = [];
+        
+        // Add new marker
+        const marker = L.marker([lat, lon]).addTo(map)
+            .bindPopup(`<b>${name}</b>`)
+            .openPopup();
+        
+        currentMarkers.push(marker);
+    }
+
+    function updateLocationInfo(data) {
+        locationInfoDiv.innerHTML = `
+            <h4>${data.name}, ${data.region}</h4>
+            <p class="text-muted">${data.country}</p>
+            <div class="row mt-3">
+                <div class="col-6">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <i class="bi bi-geo-alt"></i>
+                            <p class="mb-0">Latitude</p>
+                            <p class="h5">${data.lat}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <i class="bi bi-geo-alt"></i>
+                            <p class="mb-0">Longitude</p>
+                            <p class="h5">${data.lon}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <h5>Available Map Types:</h5>
+                <ul class="list-group">
+                    ${Object.entries(data.map_types).map(([type, url]) => `
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            ${type.charAt(0).toUpperCase() + type.slice(1)}
+                            <a href="${url}" target="_blank" class="badge bg-primary rounded-pill">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                        </li>
+                    `).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    async function fetchMapData(location, mapType) {
+        errorContainer.classList.add('d-none');
+        
+        try {
+            const response = await fetch(`/api/maps?location=${encodeURIComponent(location)}&type=${mapType}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // Update map view
+            initMap(data.lat, data.lon, 8);
+            addLocationMarker(data.lat, data.lon, data.name);
+            
+            // Calculate bounds for overlay (approx. 500km around location)
+            const bounds = [
+                [parseFloat(data.lat) - 2, parseFloat(data.lon) - 3],
+                [parseFloat(data.lat) + 2, parseFloat(data.lon) + 3]
+            ];
+            
+            // Add weather overlay
+            addWeatherOverlay(data.map_types[mapType], bounds);
+            
+            // Update location info
+            updateLocationInfo(data);
+            
+        } catch (error) {
+            errorContainer.textContent = error.message;
+            errorContainer.classList.remove('d-none');
+        }
+    }
+});
+
+</script>
+{% endblock %}

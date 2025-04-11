@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Weather Forecast{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-calendar3"></i> Forecast Search
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <input type="text" id="locationInput" class="form-control" placeholder="Enter city or zip code" value="{{ default_location }}">
+                    </div>
+                    <div class="col-md-2">
+                        <select id="daysSelect" class="form-select">
+                            <option value="3">3 Days</option>
+                            <option value="5">5 Days</option>
+                            <option value="7">7 Days</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button id="searchBtn" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i> Search
+                        </button>
+                    </div>
+                </div>
+                <div id="errorContainer" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="forecastContainer" class="d-none">
+    <!-- Current Weather Snapshot -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 id="locationName" class="mb-0"></h2>
+                            <span id="currentDate" class="text-muted"></span>
+                        </div>
+                        <div class="text-end">
+                            <div id="currentTemp" class="display-4"></div>
+                            <div id="currentCondition"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Forecast Cards -->
+    <div class="row mb-4">
+        <h4 class="mb-3"><i class="bi bi-calendar3"></i> Daily Forecast</h4>
+        <div id="dailyForecast" class="d-flex flex-nowrap overflow-auto pb-2"></div>
+    </div>
+
+    <!-- Risk Assessment -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <i class="bi bi-shield-check"></i> Severe Weather Risk Forecast
+                </div>
+                <div class="card-body">
+                    <canvas id="riskChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hourly Forecast -->
+    <div class="row">
+        <h4 class="mb-3"><i class="bi bi-clock"></i> Hourly Forecast</h4>
+        <div class="col">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div id="hourlyForecast" class="d-flex flex-nowrap overflow-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loadingSpinner" class="text-center my-5">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-2">Loading forecast data...</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Include Chart.js for risk visualization -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchBtn = document.getElementById('searchBtn');
+    const locationInput = document.getElementById('locationInput');
+    const daysSelect = document.getElementById('daysSelect');
+    const forecastContainer = document.getElementById('forecastContainer');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const errorContainer = document.getElementById('errorContainer');
+    const riskChartCanvas = document.getElementById('riskChart');
+
+    let riskChart = null;
+
+    // Load forecast for default location on page load
+    fetchForecastData(locationInput.value, daysSelect.value);
+
+    searchBtn.addEventListener('click', function() {
+        const location = locationInput.value.trim();
+        if (location) {
+            fetchForecastData(location, daysSelect.value);
+        }
+    });
+
+    async function fetchForecastData(location, days) {
+        errorContainer.classList.add('d-none');
+        forecastContainer.classList.add('d-none');
+        loadingSpinner.classList.remove('d-none');
+        
+        try {
+            const response = await fetch(`/api/forecast?location=${encodeURIComponent(location)}&days=${days}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            displayForecastData(data);
+            forecastContainer.classList.remove('d-none');
+            loadingSpinner.classList.add('d-none');
+            
+        } catch (error) {
+            errorContainer.textContent = error.message;
+            errorContainer.classList.remove('d-none');
+            forecastContainer.classList.add('d-none');
+            loadingSpinner.classList.add('d-none');
+        }
+    }
+
+    function displayForecastData(data) {
+        // Update location and current weather
+        document.getElementById('locationName').textContent = 
+            `${data.location.name}, ${data.location.country}`;
+        document.getElementById('currentDate').textContent = 
+            new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        document.getElementById('currentTemp').textContent = 
+            `${data.current.temp_c}°C`;
+        document.getElementById('currentCondition').textContent = 
+            data.current.condition.text;
+
+        // Display daily forecast cards
+        const dailyForecast = document.getElementById('dailyForecast');
+        dailyForecast.innerHTML = '';
+        
+        data.forecast.forEach(day => {
+            const riskPercentage = Math.round(day.risk_probability * 100);
+            let riskBadgeClass = 'bg-success';
+            if (riskPercentage > 70) riskBadgeClass = 'bg-danger';
+            else if (riskPercentage > 30) riskBadgeClass = 'bg-warning';
+            
+            dailyForecast.innerHTML += `
+                <div class="card flex-shrink-0 mx-2" style="width: 180px;">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">${day.day_of_week}</h5>
+                        <p class="text-muted">${new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+                        <img src="https:${day.condition.icon}" alt="${day.condition.text}" class="img-fluid my-2" style="height: 50px;">
+                        <div class="d-flex justify-content-around">
+                            <span class="text-primary fw-bold">${day.maxtemp_c}°</span>
+                            <span class="text-secondary">${day.mintemp_c}°</span>
+                        </div>
+                        <div class="mt-2">
+                            <span class="badge ${riskBadgeClass}">
+                                Risk: ${riskPercentage}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        // Create risk chart
+        createRiskChart(data.forecast);
+
+        // Display hourly forecast
+        displayHourlyForecast(data.forecast[0].hourly);
+        
+        // Add click event to daily cards to show hourly forecast
+        document.querySelectorAll('#dailyForecast .card').forEach((card, index) => {
+            card.addEventListener('click', () => {
+                displayHourlyForecast(data.forecast[index].hourly);
+            });
+        });
+    }
+
+    function displayHourlyForecast(hours) {
+        const hourlyForecast = document.getElementById('hourlyForecast');
+        hourlyForecast.innerHTML = '';
+        
+        hours.forEach(hour => {
+            hourlyForecast.innerHTML += `
+                <div class="card flex-shrink-0" style="width: 100px;">
+                    <div class="card-body text-center">
+                        <div class="fw-bold">${hour.time}</div>
+                        <div class="my-2">${hour.temp_c}°C</div>
+                        <img src="https:${hour.condition.icon}" alt="${hour.condition.text}" style="height: 30px;">
+                        ${hour.chance_of_rain > 0 ? 
+                          `<div class="small text-primary mt-1">${hour.chance_of_rain}%</div>` : 
+                          hour.chance_of_snow > 0 ? 
+                          `<div class="small text-info mt-1">${hour.chance_of_snow}%</div>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function createRiskChart(forecast) {
+        // Destroy previous chart if exists
+        if (riskChart) {
+            riskChart.destroy();
+        }
+        
+        // Create new chart
+        riskChart = new Chart(riskChartCanvas, {
+            type: 'line',
+            data: {
+                labels: forecast.map(day => day.day_of_week),
+                datasets: [{
+                    label: 'Severe Weather Risk',
+                    data: forecast.map(day => Math.round(day.risk_probability * 100)),
+                    borderColor: 'rgba(220, 53, 69, 1)',
+                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Risk Percentage'
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.raw}%`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

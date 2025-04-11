@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+
+{% block title %}Historical Weather Data{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-clock-history"></i> Historical Weather Search
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-5">
+                        <input type="text" id="locationInput" class="form-control" placeholder="Enter city or zip code" value="{{ default_location }}">
+                    </div>
+                    <div class="col-md-3">
+                        <input type="date" id="startDate" class="form-control" max="{{ (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <input type="date" id="endDate" class="form-control" max="{{ (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d') }}">
+                    </div>
+                    <div class="col-md-1">
+                        <button id="searchBtn" class="btn btn-primary w-100">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="errorContainer" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="historicalContainer" class="d-none">
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-info mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title">Avg. Temperature</h6>
+                            <p id="avgTemp" class="card-text h4">--°C</p>
+                        </div>
+                        <i class="bi bi-thermometer-half" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title">Total Precipitation</h6>
+                            <p id="totalPrecip" class="card-text h4">-- mm</p>
+                        </div>
+                        <i class="bi bi-cloud-rain" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title">Max Wind Speed</h6>
+                            <p id="maxWind" class="card-text h4">-- km/h</p>
+                        </div>
+                        <i class="bi bi-wind" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-secondary mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h6 class="card-title">Avg. Humidity</h6>
+                            <p id="avgHumidity" class="card-text h4">--%</p>
+                        </div>
+                        <i class="bi bi-droplet" style="font-size: 2rem;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Date Selector -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span id="dateRangeLabel" class="fw-bold">Select Date</span>
+                        <div class="btn-group">
+                            <button id="prevDayBtn" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <button id="nextDayBtn" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div id="dateSelector" class="d-flex flex-nowrap overflow-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="row">
+        <!-- Daily Summary -->
+        <div class="col-md-5">
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <i class="bi bi-calendar-day"></i> Daily Summary
+                </div>
+                <div class="card-body">
+                    <div id="dailySummary">
+                        <div class="text-center my-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading daily data...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hourly Data -->
+        <div class="col-md-7">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <i class="bi bi-clock-history"></i> Hourly Conditions
+                </div>
+                <div class="card-body">
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loadingSpinner" class="text-center my-5">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-2">Loading historical data...</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Include Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchBtn = document.getElementById('searchBtn');
+    const locationInput = document.getElementById('locationInput');
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    const historicalContainer = document.getElementById('historicalContainer');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const errorContainer = document.getElementById('errorContainer');
+    const prevDayBtn = document.getElementById('prevDayBtn');
+    const nextDayBtn = document.getElementById('nextDayBtn');
+    const dateSelector = document.getElementById('dateSelector');
+    const dateRangeLabel = document.getElementById('dateRangeLabel');
+    const hourlyChartCanvas = document.getElementById('hourlyChart');
+
+    // Set default dates (yesterday and 7 days ago)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    startDateInput.valueAsDate = sevenDaysAgo;
+    endDateInput.valueAsDate = yesterday;
+    
+    let historicalData = null;
+    let currentDateIndex = 0;
+    let hourlyChart = null;
+
+    // Load historical data on page load
+    fetchHistoricalData(locationInput.value || 'London', 
+                      formatDate(sevenDaysAgo), 
+                      formatDate(yesterday));
+
+    searchBtn.addEventListener('click', function() {
+        const location = locationInput.value.trim();
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        
+        if (location && startDate && endDate) {
+            fetchHistoricalData(location, startDate, endDate);
+        }
+    });
+
+    function formatDate(date) {
+        return date.toISOString().split('T')[0];
+    }
+
+    async function fetchHistoricalData(location, startDate, endDate) {
+        errorContainer.classList.add('d-none');
+        historicalContainer.classList.add('d-none');
+        loadingSpinner.classList.remove('d-none');
+        
+        try {
+            const response = await fetch(
+                `/api/historical?location=${encodeURIComponent(location)}&date=${startDate}&end_date=${endDate}`
+            );
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            historicalData = data;
+            currentDateIndex = 0;
+            
+            displayHistoricalData();
+            historicalContainer.classList.remove('d-none');
+            loadingSpinner.classList.add('d-none');
+            
+        } catch (error) {
+            errorContainer.textContent = error.message;
+            errorContainer.classList.remove('d-none');
+            historicalContainer.classList.add('d-none');
+            loadingSpinner.classList.add('d-none');
+        }
+    }
+
+    function displayHistoricalData() {
+        if (!historicalData || !historicalData.historical || historicalData.historical.length === 0) {
+            return;
+        }
+
+        // Update summary cards
+        updateSummaryCards();
+        
+        // Update date selector
+        updateDateSelector();
+        
+        // Display data for first date
+        displayDateData(currentDateIndex);
+    }
+
+    function updateSummaryCards() {
+        const days = historicalData.historical.length;
+        
+        // Calculate averages
+        const avgTemp = historicalData.historical.reduce((sum, day) => sum + day.avgtemp_c, 0) / days;
+        const totalPrecip = historicalData.historical.reduce((sum, day) => sum + day.totalprecip_mm, 0);
+        const maxWind = Math.max(...historicalData.historical.map(day => day.maxwind_kph));
+        const avgHumidity = historicalData.historical.reduce((sum, day) => sum + day.avghumidity, 0) / days;
+        
+        // Update cards
+        document.getElementById('avgTemp').textContent = `${avgTemp.toFixed(1)}°C`;
+        document.getElementById('totalPrecip').textContent = `${totalPrecip.toFixed(1)} mm`;
+        document.getElementById('maxWind').textContent = `${maxWind} km/h`;
+        document.getElementById('avgHumidity').textContent = `${avgHumidity.toFixed(0)}%`;
+    }
+
+    function updateDateSelector() {
+        dateSelector.innerHTML = '';
+        
+        historicalData.historical.forEach((day, index) => {
+            const date = new Date(day.date);
+            const isActive = index === currentDateIndex;
+            
+            dateSelector.innerHTML += `
+                <div class="card flex-shrink-0 ${isActive ? 'border-primary' : ''}" 
+                     style="width: 120px; cursor: pointer;"
+                     onclick="selectDate(${index})">
+                    <div class="card-body text-center p-2 ${isActive ? 'bg-primary text-white' : ''}">
+                        <div class="fw-bold">${day.day_of_week}</div>
+                        <div class="small">${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        // Update date range label
+        const firstDate = new Date(historicalData.historical[0].date);
+        const lastDate = new Date(historicalData.historical[historicalData.historical.length - 1].date);
+        
+        dateRangeLabel.textContent = firstDate.toLocaleDateString() === lastDate.toLocaleDateString() 
+            ? firstDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+            : `${firstDate.toLocaleDateString()} - ${lastDate.toLocaleDateString()}`;
+    }
+
+    function selectDate(index) {
+        currentDateIndex = index;
+        displayDateData(index);
+        updateDateSelector();
+    }
+
+    function displayDateData(index) {
+        const dayData = historicalData.historical[index];
+        
+        // Update daily summary
+        updateDailySummary(dayData);
+        
+        // Update hourly chart
+        updateHourlyChart(dayData);
+    }
+
+    function updateDailySummary(dayData) {
+        const date = new Date(dayData.date);
+        
+        document.getElementById('dailySummary').innerHTML = `
+            <h4>${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h4>
+            <div class="text-center my-3">
+                <img src="https:${dayData.condition.icon}" alt="${dayData.condition.text}" style="height: 64px;">
+                <p class="h5">${dayData.condition.text}</p>
+            </div>
+            <div class="row">
+                <div class="col-6">
+                    <p><i class="bi bi-thermometer-high text-danger"></i> <strong>High:</strong> ${dayData.maxtemp_c}°C</p>
+                    <p><i class="bi bi-wind text-info"></i> <strong>Max Wind:</strong> ${dayData.maxwind_kph} km/h</p>
+                </div>
+                <div class="col-6">
+                    <p><i class="bi bi-thermometer-low text-primary"></i> <strong>Low:</strong> ${dayData.mintemp_c}°C</p>
+                    <p><i class="bi bi-droplet text-success"></i> <strong>Humidity:</strong> ${dayData.avghumidity}%</p>
+                </div>
+            </div>
+            <div class="mt-3">
+                <p><i class="bi bi-cloud-rain text-warning"></i> <strong>Precipitation:</strong> ${dayData.totalprecip_mm} mm</p>
+            </div>
+        `;
+    }
+
+    function updateHourlyChart(dayData) {
+        const hours = dayData.hourly.map(hour => hour.time);
+        const temps = dayData.hourly.map(hour => hour.temp_c);
+        const precip = dayData.hourly.map(hour => hour.precip_mm);
+        const humidity = dayData.hourly.map(hour => hour.humidity);
+        const wind = dayData.hourly.map(hour => hour.wind_kph);
+        
+        // Destroy previous chart if exists
+        if (hourlyChart) {
+            hourlyChart.destroy();
+        }
+        
+        // Create new chart
+        hourlyChart = new Chart(hourlyChartCanvas, {
+            type: 'line',
+            data: {
+                labels: hours,
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        data: temps,
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        yAxisID: 'y',
+                        tension: 0.3
+                    },
+                    {
+                        label: 'Precipitation (mm)',
+                        data: precip,
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        yAxisID: 'y1',
+                        type: 'bar'
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        data: humidity,
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        yAxisID: 'y2',
+                        hidden: true
+                    },
+                    {
+                        label: 'Wind Speed (km/h)',
+                        data: wind,
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                        yAxisID: 'y3',
+                        hidden: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Hourly Weather Data'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                label += context.parsed.y;
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                        title: {
+                            display: true,
+                            text: 'Precipitation (mm)'
+                        }
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: false,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                        title: {
+                            display: true,
+                            text: 'Humidity (%)'
+                        }
+                    },
+                    y3: {
+                        type: 'linear',
+                        display: false,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                        title: {
+                            display: true,
+                            text: 'Wind Speed (km/h)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Navigation buttons
+    prevDayBtn.addEventListener('click', function() {
+        if (currentDateIndex > 0) {
+            selectDate(currentDateIndex - 1);
+        }
+    });
+
+    nextDayBtn.addEventListener('click', function() {
+        if (currentDateIndex < historicalData.historical.length - 1) {
+            selectDate(currentDateIndex + 1);
+        }
+    });
+
+    // Make selectDate available globally
+    window.selectDate = selectDate;
+});
+</script>
+{% endblock %}

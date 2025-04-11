@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}Current Weather{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-search"></i> Location Search
+            </div>
+            <div class="card-body">
+                <div class="input-group mb-3">
+                    <input type="text" id="locationInput" class="form-control" placeholder="Enter city or zip code" value="{{ default_location }}">
+                    <button id="searchBtn" class="btn btn-primary" type="button">
+                        <i class="bi bi-search"></i> Search
+                    </button>
+                </div>
+                <div id="errorContainer" class="alert alert-danger d-none"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="weatherContainer" class="d-none">
+    <div class="row">
+        <!-- Main Weather Card -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 text-center">
+                            <h2 id="locationName" class="display-4"></h2>
+                            <div id="weatherIcon" class="my-3" style="font-size: 4rem;"></div>
+                            <p id="weatherDescription" class="h4"></p>
+                            <p id="temperature" class="display-1"></p>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="row">
+                                <div class="col-6 mb-3">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <i class="bi bi-thermometer-half text-info"></i>
+                                            <p class="mb-0">Feels Like</p>
+                                            <p id="feelsLike" class="h4"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <i class="bi bi-droplet-half text-primary"></i>
+                                            <p class="mb-0">Humidity</p>
+                                            <p id="humidity" class="h4"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <i class="bi bi-wind text-success"></i>
+                                            <p class="mb-0">Wind</p>
+                                            <p id="windSpeed" class="h4"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <i class="bi bi-brightness-high text-warning"></i>
+                                            <p class="mb-0">UV Index</p>
+                                            <p id="uvIndex" class="h4"></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alerts and Prediction -->
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header bg-danger text-white">
+                    <i class="bi bi-exclamation-triangle"></i> Weather Alerts
+                </div>
+                <div id="alertContainer" class="card-body">
+                    <div id="noAlertsMessage" class="text-center text-muted">
+                        No active alerts for this location
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <i class="bi bi-shield-check"></i> Risk Assessment
+                </div>
+                <div class="card-body">
+                    <div class="progress mb-3" style="height: 30px;">
+                        <div id="riskBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <p id="riskDescription" class="text-center"></p>
+                    <div id="riskFactors" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Additional Details -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-secondary text-white">
+                    <i class="bi bi-info-circle"></i> Additional Information
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <p><strong>Pressure:</strong> <span id="pressure"></span></p>
+                            <p><strong>Visibility:</strong> <span id="visibility"></span></p>
+                        </div>
+                        <div class="col-6">
+                            <p><strong>Cloud Cover:</strong> <span id="cloudCover"></span></p>
+                            <p><strong>Last Updated:</strong> <span id="lastUpdated"></span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <i class="bi bi-bell"></i> Get Alerts
+                </div>
+                <div class="card-body">
+                    <form id="locationAlertForm">
+                        <div class="mb-3">
+                            <label for="alertEmail" class="form-label">Email address</label>
+                            <input type="email" class="form-control" id="alertEmail" required>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-envelope-plus"></i> Subscribe to Alerts
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchBtn = document.getElementById('searchBtn');
+    const locationInput = document.getElementById('locationInput');
+    const weatherContainer = document.getElementById('weatherContainer');
+    const errorContainer = document.getElementById('errorContainer');
+
+    // Load weather for default location on page load
+    fetchWeatherData(locationInput.value);
+
+    searchBtn.addEventListener('click', function() {
+        const location = locationInput.value.trim();
+        if (location) {
+            fetchWeatherData(location);
+        }
+    });
+
+    async function fetchWeatherData(location) {
+        errorContainer.classList.add('d-none');
+        
+        try {
+            const response = await fetch(`/api/current?location=${encodeURIComponent(location)}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            displayWeatherData(data);
+            weatherContainer.classList.remove('d-none');
+            
+        } catch (error) {
+            errorContainer.textContent = error.message;
+            errorContainer.classList.remove('d-none');
+            weatherContainer.classList.add('d-none');
+        }
+    }
+
+    function displayWeatherData(data) {
+        const current = data.current;
+        const location = data.location;
+
+        // Location and basic info
+        document.getElementById('locationName').textContent = `${location.name}, ${location.country}`;
+        document.getElementById('temperature').textContent = `${current.temp_c}°C`;
+        document.getElementById('weatherDescription').textContent = current.condition.text;
+        document.getElementById('weatherIcon').innerHTML = `<img src="https:${current.condition.icon}" alt="${current.condition.text}" class="img-fluid">`;
+
+        // Detailed metrics
+        document.getElementById('feelsLike').textContent = `${current.feelslike_c}°C`;
+        document.getElementById('humidity').textContent = `${current.humidity}%`;
+        document.getElementById('windSpeed').textContent = `${current.wind_kph} km/h`;
+        document.getElementById('uvIndex').textContent = current.uv;
+        document.getElementById('pressure').textContent = `${current.pressure_mb} mb`;
+        document.getElementById('visibility').textContent = `${current.vis_km} km`;
+        document.getElementById('cloudCover').textContent = `${current.cloud}%`;
+        document.getElementById('lastUpdated').textContent = new Date(current.last_updated).toLocaleString();
+
+        // Risk assessment
+        const riskPercentage = Math.round(data.alert_probability * 100);
+        const riskBar = document.getElementById('riskBar');
+        riskBar.style.width = `${riskPercentage}%`;
+        
+        if (riskPercentage < 30) {
+            riskBar.className = 'progress-bar bg-success progress-bar-striped progress-bar-animated';
+            document.getElementById('riskDescription').textContent = 'Low risk of severe weather';
+        } else if (riskPercentage < 70) {
+            riskBar.className = 'progress-bar bg-warning progress-bar-striped progress-bar-animated';
+            document.getElementById('riskDescription').textContent = 'Moderate risk of severe weather';
+        } else {
+            riskBar.className = 'progress-bar bg-danger progress-bar-striped progress-bar-animated';
+            document.getElementById('riskDescription').textContent = 'High risk of severe weather';
+        }
+
+        // Risk factors
+        const riskFactors = document.getElementById('riskFactors');
+        riskFactors.innerHTML = '';
+        
+        const factors = [
+            { name: 'Temperature', value: current.temp_c, risk: Math.abs(current.temp_c - 20) / 30 },
+            { name: 'Wind Speed', value: current.wind_kph, risk: current.wind_kph / 50 },
+            { name: 'UV Index', value: current.uv, risk: current.uv / 11 },
+            { name: 'Precipitation', value: current.precip_mm, risk: current.precip_mm / 20 }
+        ];
+        
+        factors.forEach(factor => {
+            const factorRisk = Math.min(Math.round(factor.risk * 100), 100);
+            riskFactors.innerHTML += `
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between">
+                        <span>${factor.name}</span>
+                        <span>${factor.value}</span>
+                    </div>
+                    <div class="progress" style="height: 5px;">
+                        <div class="progress-bar ${factorRisk > 70 ? 'bg-danger' : factorRisk > 30 ? 'bg-warning' : 'bg-success'}" 
+                             role="progressbar" style="width: ${factorRisk}%"></div>
+                    </div>
+                </div>
+            `;
+        });
+
+        // Alerts
+        const alertContainer = document.getElementById('alertContainer');
+        const noAlertsMessage = document.getElementById('noAlertsMessage');
+        
+        if (data.alerts && data.alerts.length > 0) {
+            noAlertsMessage.classList.add('d-none');
+            alertContainer.innerHTML = '';
+            
+            data.alerts.forEach(alert => {
+                let alertClass = '';
+                let icon = '';
+                
+                if (alert.type === 'heat') {
+                    alertClass = 'alert-danger';
+                    icon = 'bi-thermometer-high';
+                } else if (alert.type === 'cold') {
+                    alertClass = 'alert-info';
+                    icon = 'bi-thermometer-low';
+                } else if (alert.type === 'wind') {
+                    alertClass = 'alert-warning';
+                    icon = 'bi-wind';
+                } else {
+                    alertClass = 'alert-primary';
+                    icon = 'bi-sun';
+                }
+                
+                alertContainer.innerHTML += `
+                    <div class="alert ${alertClass} alert-dismissible fade show">
+                        <i class="bi ${icon} me-2"></i>
+                        ${alert.message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+            });
+        } else {
+            noAlertsMessage.classList.remove('d-none');
+        }
+    }
+
+    // Handle alert subscriptions
+    document.getElementById('locationAlertForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const email = document.getElementById('alertEmail').value;
+        const location = locationInput.value.trim();
+        
+        fetch('/api/subscribe', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email: email,
+                location: location,
+                alert_types: ['all']
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message || 'Successfully subscribed to alerts!');
+        })
+        .catch(error => {
+            alert('Failed to subscribe. Please try again.');
+        });
+    });
+});
+</script>
+{% endblock %}
